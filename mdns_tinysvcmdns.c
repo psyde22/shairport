@@ -48,8 +48,19 @@ static int mdns_tinysvcmdns_register(char *apname, int port) {
         return -1;
     }
 
-    char hostname[100];
-    gethostname(hostname, 100);
+    // room for name + .local + NULL
+    char hostname[100 + 6];
+    gethostname(hostname, 99);
+    // according to POSIX, this may be truncated without a final NULL !
+    hostname[99] = 0;
+
+    // will not work if the hostname doesn't end in .local
+    char *hostend = hostname + strlen(hostname);
+    if ((strlen(hostname) > 6) &&
+        strcmp(hostend - 6, ".local"))
+    {
+        strcat(hostname, ".local");
+    }
 
     if (getifaddrs(&ifalist) < 0)
     {
@@ -62,14 +73,16 @@ static int mdns_tinysvcmdns_register(char *apname, int port) {
     // Look for an ipv4/ipv6 non-loopback interface to use as the main one.
     for (ifa = ifalist; ifa != NULL; ifa = ifa->ifa_next)
     {
-        if (!(ifa->ifa_flags & IFF_LOOPBACK) && ifa->ifa_addr->sa_family == AF_INET)
+        if (!(ifa->ifa_flags & IFF_LOOPBACK) && ifa->ifa_addr &&
+            ifa->ifa_addr->sa_family == AF_INET)
         {
             uint32_t main_ip = ((struct sockaddr_in *)ifa->ifa_addr)->sin_addr.s_addr;
 
             mdnsd_set_hostname(svr, hostname, main_ip);
             break;
         }
-        else if (!(ifa->ifa_flags & IFF_LOOPBACK) && ifa->ifa_addr->sa_family == AF_INET6)
+        else if (!(ifa->ifa_flags & IFF_LOOPBACK) && ifa->ifa_addr &&
+                 ifa->ifa_addr->sa_family == AF_INET6)
         {
             struct in6_addr *addr = &((struct sockaddr_in6 *)ifa->ifa_addr)->sin6_addr;
 
